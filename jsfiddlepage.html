@@ -1,0 +1,164 @@
+<div id="output" style="font-family: monospace; font-size: 11px; white-space: pre">
+</div>
+
+<script src="https://npmcdn.com/react/dist/react-with-addons.js"></script>
+<script src="https://npmcdn.com/react-dom/dist/react-dom.js"></script>
+
+<script>
+	// Monkey patch React
+  // https://facebook.github.io/react/docs/typechecking-with-proptypes.html
+  
+  function mapPropTypeToDef(propType) {
+    if (!propType) return "TODO_ILLEGAL"; // because it's an invalid prop def.
+    if (propType.typedef) return propType.typedef;
+		// Unexpected
+    return "TODO_UNKNOWN"; // marker for manual intervention
+  }
+  
+  function patchSimple(old, typedef) {
+    old.typedef = typedef += "|null|undefined"; // We take that to include explicitly null, as well as undefined (missing)
+    if (old.isRequired) old.isRequired.typedef = typedef;
+    return old;
+  }
+  
+  function patchHigher(old, f, req) {
+    var patched = function() {
+      var result = old.apply(this, arguments);
+      result.typedef = f(arguments);
+      if (!req) result.typedef += "|null|undefined"; // We take that to include explicitly null, as well as undefined (missing)
+      return result;
+    }
+    // You can chain any of the above with `isRequired` to make sure a warning
+    // is shown if the prop isn't provided.
+    if (old.isRequired) patched.isRequired = patchHigher(old.isRequired, f, true);
+    return patched;
+  }
+  
+  // You can declare that a prop is a specific JS primitive. By default, these
+  // are all optional.
+  React.PropTypes.array = patchSimple(React.PropTypes.array, "Array");
+  React.PropTypes.bool = patchSimple(React.PropTypes.bool, "boolean");
+  React.PropTypes.func = patchSimple(React.PropTypes.func, "Function");
+  React.PropTypes.number = patchSimple(React.PropTypes.number, "number");
+  React.PropTypes.object = patchSimple(React.PropTypes.object, "Object");
+  React.PropTypes.string = patchSimple(React.PropTypes.string, "string");
+  React.PropTypes.symbol = patchSimple(React.PropTypes.symbol, "Symbol");
+
+  // Anything that can be rendered: numbers, strings, elements or an array
+  // (or fragment) containing these types.
+  React.PropTypes.node = patchSimple(React.PropTypes.node, "number|string|React.Element|Array<number|string|React.Element|null>");
+
+  // A React element.
+  React.PropTypes.element = patchSimple(React.PropTypes.element, "React.Element>");
+
+  // You can also declare that a prop is an instance of a class. This uses
+  // JS's instanceof operator.
+  // Marker for manual intervention; typically the name isn't right:
+  React.PropTypes.instanceOf = patchHigher(React.PropTypes.instanceOf, function(args) {return "TODO_"+args[0].name});
+
+  // You can ensure that your prop is limited to specific values by treating
+  // it as an enum.
+  React.PropTypes.oneOf = patchHigher(React.PropTypes.oneOf, function(args) {
+    if (args[0].every(function(e) {return typeof e==="string"})) return "string";
+    return "TODO_ENUM"; // failing marker for manual intervention (unlikely)
+  });
+
+  // An object that could be one of many types
+  React.PropTypes.oneOfType = patchHigher(React.PropTypes.oneOfType, function(args) {
+    return "(" + args[0].map(function(a) {return mapPropTypeToDef(a);}).join("|") + ")";
+  });
+
+  // An array of a certain type
+  React.PropTypes.arrayOf = patchHigher(React.PropTypes.arrayOf, function(args) {
+    return "Array<"+mapPropTypeToDef(args[0])+">";
+  });
+
+  // An object with property values of a certain type
+  React.PropTypes.objectOf = patchHigher(React.PropTypes.objectOf, function(args) {
+    return "Object<string,"+mapPropTypeToDef(args[0])+">";
+  });
+
+  // An object taking on a particular shape
+  React.PropTypes.shape = patchHigher(React.PropTypes.shape, function(args) {
+    return "{" + Object.keys(args[0]).forEach(function(k) { return k+": "+mapPropTypeToDef(args[0][k]); }) + "}";
+  });
+
+  // A value of any data type
+  React.PropTypes.any = patchSimple(React.PropTypes.any, "*");
+
+</script>
+
+<script src="https://npmcdn.com/recharts/umd/Recharts.js"></script>
+
+<script>
+var propTypeDefSuffix = "_PropTypeDef";
+
+var output = "";
+var inComment = false;
+function writeLine(s) {
+  if (inComment) s = " * "+s;
+  output += s +"\n";
+}
+function writeMultiline(s) {
+  s.split("\n").forEach(function(ss) {writeLine(ss)});
+}
+function startComment() {
+  if (inComment) throw new Error();
+  writeLine("/**");
+  inComment = true;
+}
+function endComment() {
+  if (!inComment) throw new Error();
+  inComment = false;
+  writeLine(" */");
+}
+
+function buildPropTypeDef(propTypes) {
+  var defs = Object.keys(propTypes).map(function(key) {
+    return "     "+key+": ("+mapPropTypeToDef(propTypes[key])+")";
+  });
+  return defs.join("\n");
+}
+
+function spider(root, prefix) {
+  console.log(prefix);
+  var propTypeDefName;
+  if (root.prototype instanceof React.Component || root.propTypes) {
+  
+    writeLine("");
+
+    if (root.propTypes && Object.keys(root.propTypes).length) {
+      propTypeDef = "!"+prefix+propTypeDefSuffix;
+
+      startComment();
+      writeLine("React props for "+prefix);
+      writeLine("@typedef {{");
+      writeMultiline(buildPropTypeDef(root.propTypes));
+      writeLine("}}");
+      endComment();
+      writeLine(propTypeDef+";");
+      
+      writeLine("");
+    } else {
+      propTypeDef = "*"; // use * as marker for 
+      writeLine("// TODO: prop type def");
+    } 
+
+    writeLine("/** @type { function(new:React.Component<"+propTypeDef+">, "+propTypeDef+") } */");
+    writeLine(prefix+";");
+
+		writeLine("");
+    
+    return;
+  }
+  Object.keys(root).forEach(function(key) {
+    spider(root[key], prefix+"."+key);
+  });  
+}
+
+spider(Recharts, "VO_VENDOR.Recharts");
+//spider(Recharts.AreaChart, "VO_VENDOR.Recharts.AreaChart");
+
+document.getElementById("output").textContent = output;
+
+</script>
