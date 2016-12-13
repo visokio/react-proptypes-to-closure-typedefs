@@ -16,21 +16,22 @@
   }
   
   function patchSimple(old, typedef) {
-    old.typedef = typedef += "|null|undefined"; // We take that to include explicitly null, as well as undefined (missing)
+    old.typedef = typedef + "|null|undefined"; // We take that to include explicitly null, as well as undefined (missing)
+    // You can chain any of the above with `isRequired` to make sure a warning
+    // is shown if the prop isn't provided.
+    // We take that to include explicitly null, as well as undefined (missing)
     if (old.isRequired) old.isRequired.typedef = typedef;
     return old;
   }
   
-  function patchHigher(old, f, req) {
+  function patchHigher(old, f) {
     var patched = function() {
       var result = old.apply(this, arguments);
-      result.typedef = f(arguments);
-      if (!req) result.typedef += "|null|undefined"; // We take that to include explicitly null, as well as undefined (missing)
+      var typedef = f(arguments);
+      result.args = arguments; // for debugging
+      patchSimple(result, typedef);
       return result;
     }
-    // You can chain any of the above with `isRequired` to make sure a warning
-    // is shown if the prop isn't provided.
-    if (old.isRequired) patched.isRequired = patchHigher(old.isRequired, f, true);
     return patched;
   }
   
@@ -60,6 +61,8 @@
   // it as an enum.
   React.PropTypes.oneOf = patchHigher(React.PropTypes.oneOf, function(args) {
     if (args[0].every(function(e) {return typeof e==="string"})) return "string";
+    if (args[0].every(function(e) {return typeof e==="number"})) return "number";
+    if (args[0].every(function(e) {return typeof e==="number" || typeof e==="string"})) return "number|string";
     return "TODO_ENUM"; // failing marker for manual intervention (unlikely)
   });
 
@@ -80,7 +83,7 @@
 
   // An object taking on a particular shape
   React.PropTypes.shape = patchHigher(React.PropTypes.shape, function(args) {
-    return "{" + Object.keys(args[0]).forEach(function(k) { return k+": "+mapPropTypeToDef(args[0][k]); }) + "}";
+    return "{" + Object.keys(args[0]).sort().forEach(function(k) { return k+": "+mapPropTypeToDef(args[0][k]); }) + "}";
   });
 
   // A value of any data type
@@ -114,24 +117,24 @@ function endComment() {
 }
 
 function buildPropTypeDef(propTypes) {
-  var defs = Object.keys(propTypes).map(function(key) {
+  var defs = Object.keys(propTypes).sort().map(function(key) {
     return "     "+key+": ("+mapPropTypeToDef(propTypes[key])+")";
   });
-  return defs.join("\n");
+  return defs.join(",\n");
 }
 
 function spider(root, prefix) {
-  console.log(prefix);
+  //console.log(prefix);
   var propTypeDefName;
   if (root.prototype instanceof React.Component || root.propTypes) {
   
     writeLine("");
 
     if (root.propTypes && Object.keys(root.propTypes).length) {
-      propTypeDef = "!"+prefix+propTypeDefSuffix;
+      propTypeDef = prefix+propTypeDefSuffix;
 
       startComment();
-      writeLine("React props for "+prefix);
+      writeLine("AUTO-GENERATED React props for "+prefix);
       writeLine("@typedef {{");
       writeMultiline(buildPropTypeDef(root.propTypes));
       writeLine("}}");
@@ -144,14 +147,14 @@ function spider(root, prefix) {
       writeLine("// TODO: prop type def");
     } 
 
-    writeLine("/** @type { function(new:React.Component<"+propTypeDef+">, "+propTypeDef+") } */");
+    writeLine("/** @type { function(new:React.Component<!"+propTypeDef+">, !"+propTypeDef+") } */");
     writeLine(prefix+";");
 
 		writeLine("");
     
     return;
   }
-  Object.keys(root).forEach(function(key) {
+  Object.keys(root).sort().forEach(function(key) {
     spider(root[key], prefix+"."+key);
   });  
 }
