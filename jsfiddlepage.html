@@ -35,6 +35,10 @@
     return patched;
   }
   
+  // Recharts sometimes references PropTypes.value
+  // which doesn't exist, so I'm treating it as any:
+  React.PropTypes.value = React.PropTypes.any;
+  
   // You can declare that a prop is a specific JS primitive. By default, these
   // are all optional.
   React.PropTypes.array = patchSimple(React.PropTypes.array, "Array");
@@ -83,7 +87,7 @@
 
   // An object taking on a particular shape
   React.PropTypes.shape = patchHigher(React.PropTypes.shape, function(args) {
-    return "{" + Object.keys(args[0]).sort().forEach(function(k) { return k+": "+mapPropTypeToDef(args[0][k]); }) + "}";
+    return "{ " + Object.keys(args[0]).sort().map(function(k) { return k+": ("+mapPropTypeToDef(args[0][k])+")"; }).join(", ") + " }";
   });
 
   // A value of any data type
@@ -116,39 +120,57 @@ function endComment() {
   writeLine(" */");
 }
 
-function buildPropTypeDef(propTypes) {
+function buildPropTypeDef(propTypes, refType) {
   var defs = Object.keys(propTypes).sort().map(function(key) {
     return "     "+key+": ("+mapPropTypeToDef(propTypes[key])+")";
   });
+
+  // All React components have these props...
+  
+  // TODO: typedefs can't be circular so we can't
+  // actually include refType... maybe @record would solve this?
+  refType = "?"; // user will need to cast
+  
+  defs = [
+    "     key: (string|undefined)",
+  	"     ref: (function("+refType+")|undefined)"
+  ].concat(defs);
   return defs.join(",\n");
 }
 
 function spider(root, prefix) {
   //console.log(prefix);
-  var propTypeDefName;
+  var propTypeDefName, propTypes, loose;
   if (root.prototype instanceof React.Component || root.propTypes) {
   
     writeLine("");
+    
+    loose = !root.propTypes;
+    propTypes = root.propTypes || [];
+    
+    propTypeDef = prefix+propTypeDefSuffix;
 
-    if (root.propTypes && Object.keys(root.propTypes).length) {
-      propTypeDef = prefix+propTypeDefSuffix;
+    startComment();
+    writeLine("AUTO-GENERATED React props for "+prefix);
+    if (loose) writeLine("WARNING: the component did not declare any propTypes. These boilerplate props must be considered loose.");
+    else writeLine("Generated from "+prefix+".propTypes.");
+    writeLine("@typedef {{");
+    writeMultiline(buildPropTypeDef(propTypes, prefix));
+    writeLine("}}"); // TODO: no way to indicate strict vs loose in CC annotations yet - see https://github.com/google/closure-compiler/issues/1811
+    endComment();
+    writeLine(propTypeDef+";");
 
-      startComment();
-      writeLine("AUTO-GENERATED React props for "+prefix);
-      writeLine("@typedef {{");
-      writeMultiline(buildPropTypeDef(root.propTypes));
-      writeLine("}}");
-      endComment();
-      writeLine(propTypeDef+";");
-      
-      writeLine("");
-    } else {
-      propTypeDef = "*"; // use * as marker for 
-      writeLine("// TODO: prop type def");
-    } 
+    writeLine("");
 
-    writeLine("/** @type { function(new:React.Component<!"+propTypeDef+">, !"+propTypeDef+") } */");
-    writeLine(prefix+";");
+    // Writing a full @constructor rather than @type,
+    // due to some OTI bugs, it also ensures the
+    // type for props is explicit.
+    startComment();
+    writeLine("@constructor");
+    writeLine("@extends {React.Component<!"+propTypeDef+">}");
+    writeLine("@param {!"+propTypeDef+"} props");
+    endComment();
+    writeLine(prefix+" = function(props) {};");
 
 		writeLine("");
     
