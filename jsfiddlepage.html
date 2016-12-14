@@ -187,13 +187,14 @@ function spider(root, prefix) {
 
 // Just a subset:
 function sr() {
-  for (var i=0; i<arguments.length; i++) {
-    var name = arguments[i];
+  var names = Array.from(arguments).sort();
+  for (var i=0; i<names.length; i++) {
+    var name = names[i];
     spider(Recharts[name], "VO_VENDOR.Recharts."+name);
   }
 }
 sr(
-	"Text",
+	  "Text",
     "Rectangle",
     "Pie",
     "ReferenceDot",
