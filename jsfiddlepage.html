@@ -154,7 +154,8 @@ function spider(root, prefix) {
     writeLine("AUTO-GENERATED React props for "+prefix);
     if (loose) writeLine("WARNING: the component did not declare any propTypes. These boilerplate props must be considered loose.");
     else writeLine("Generated from "+prefix+".propTypes.");
-    writeLine("@typedef {{");
+    // NB. "@struct" requires https://github.com/visokio/closure-compiler/commits/typedefsWithStruct to be enforced properly:
+    writeLine("@struct @typedef {{");
     writeMultiline(buildPropTypeDef(propTypes, prefix));
     writeLine("}}"); // TODO: no way to indicate strict vs loose in CC annotations yet - see https://github.com/google/closure-compiler/issues/1811
     endComment();
