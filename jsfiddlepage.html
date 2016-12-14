@@ -182,8 +182,34 @@ function spider(root, prefix) {
   });  
 }
 
-spider(Recharts, "VO_VENDOR.Recharts");
-//spider(Recharts.AreaChart, "VO_VENDOR.Recharts.AreaChart");
+// Everything:
+//spider(Recharts, "VO_VENDOR.Recharts");
+
+// Just a subset:
+function sr() {
+  for (var i=0; i<arguments.length; i++) {
+    var name = arguments[i];
+    spider(Recharts[name], "VO_VENDOR.Recharts."+name);
+  }
+}
+sr(
+	"Text",
+    "Rectangle",
+    "Pie",
+    "ReferenceDot",
+    "ReferenceArea",
+    "Line",
+    "Area",
+    "Bar",
+    "Scatter",
+    "XAxis",
+    "YAxis",
+    "LineChart",
+    "BarChart",
+    "PieChart",
+    "ScatterChart",
+    "AreaChart"
+);
 
 document.getElementById("output").textContent = output;
 
